@@ -1,0 +1,242 @@
+%%% -------------------------------------------------------------------
+%%% @author  : Joq Erlang
+%%% @doc: : 
+%%% Created : 
+%%% Pod is an erlang vm and 1-n erlang applications (containers) 
+%%% Pods network id is the node name  
+%%% The pod lives as long as the applications is living 
+%%% In each pod there is a mnesias dbase
+%%% Pod template {apiVersion, kind, metadata,[{namen,striang}]
+%%%               spec,[{containers,[{name,},{image,busybox},
+%%%                     {command,['erl cmd]},restart policy]
+%%% storage in Pod
+%%% File System:
+%%%  
+%%% -------------------------------------------------------------------
+-module(kube_logger).   
+-behaviour(gen_server).
+
+%% --------------------------------------------------------------------
+%% Include files
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+%% Key Data structures
+%% 
+%% --------------------------------------------------------------------
+-record(state, {event_ref,file_descriptor,
+		monitor_node}).
+
+
+
+%% --------------------------------------------------------------------
+%% Definitions 
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+%% Function: available_hosts()
+%% Description: Based on hosts.config file checks which hosts are avaible
+%% Returns: List({HostId,Ip,SshPort,Uid,Pwd}
+%% --------------------------------------------------------------------
+
+
+
+
+
+% OaM related
+-export([
+	 log/1,ticket/1,alarm/1,
+	 file_log/1,file_ticket/1,file_alarm/1
+       
+	]).
+
+-export([start/0,
+	 stop/0,
+	 ping/0
+	]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3,handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+
+
+%% ====================================================================
+%% External functions
+%% ====================================================================
+
+%% Asynchrounus Signals
+
+%% Gen server functions
+
+start()-> gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+stop()-> gen_server:call(?MODULE, {stop},infinity).
+
+
+%%---------------------------------------------------------------
+
+
+
+%%---------------------------------------------------------------
+
+    
+add_monitor(Node)-> 
+    gen_server:call(?MODULE, {add_monitor,Node},infinity).
+    
+ping()-> 
+    gen_server:call(?MODULE, {ping},infinity).
+
+%%-----------------------------------------------------------------------
+log(LogInfo)-> 
+    gen_server:cast(?MODULE, {log,LogInfo}).
+ticket(TicketInfo)-> 
+    gen_server:cast(?MODULE, {ticket,TicketInfo}).
+alarm(AlarmInfo)-> 
+    gen_server:cast(?MODULE, {alarm,AlarmInfo}).
+
+file_log(LogInfo)-> 
+    gen_server:cast(?MODULE, {file_log,LogInfo}).
+file_ticket(TicketInfo)-> 
+    gen_server:cast(?MODULE, {file_ticket,TicketInfo}).
+file_alarm(AlarmInfo)-> 
+    gen_server:cast(?MODULE, {file_alarm,AlarmInfo}).
+
+%%----------------------------------------------------------------------
+
+
+%% ====================================================================
+%% Server functions
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+%% Function: 
+%% Description: Initiates the server
+%% Returns: {ok, State}          |
+%%          {ok, State, Timeout} |
+%%          ignore               |
+%%          {stop, Reason}
+%
+%% --------------------------------------------------------------------
+init([]) ->
+    {ok,Fd}=file:open(?MODULE,write),    
+    
+  %  mnesia:stop(),
+  %  mnesia:delete_schema([node()]),
+  %  mnesia:start(),
+    
+    {ok,Ref}=gen_event:start(),
+    ok=gen_event:add_handler(Ref,kube_events,{}),
+    
+    {ok, #state{event_ref=Ref,file_descriptor=Fd,
+		monitor_node=not_defined}}.
+    
+%% --------------------------------------------------------------------
+%% Function: handle_call/3
+%% Description: Handling call messages
+%% Returns: {reply, Reply, State}          |
+%%          {reply, Reply, State, Timeout} |
+%%          {noreply, State}               |
+%%          {noreply, State, Timeout}      |
+%%          {stop, Reason, Reply, State}   | (terminate/2 is called)
+%%          {stop, Reason, State}            (aterminate/2 is called)
+%% --------------------------------------------------------------------
+
+
+
+handle_call({add_monitor,Node},_From,State) ->
+    {reply,ok, State#state{monitor_node=Node}};
+
+handle_call({ping},_From,State) ->
+    Reply={pong,node(),?MODULE},
+    {reply, Reply, State};
+
+handle_call({stop}, _From, State) ->
+    {stop, normal, shutdown_ok, State};
+
+handle_call(Request, From, State) ->
+    Reply = {unmatched_signal,?MODULE,Request,From},
+    {reply, Reply, State}.
+
+%% --------------------------------------------------------------------
+%% Function: handle_cast/2
+%% Description: Handling cast messages
+%% Returns: {noreply, State}          |
+%%          {noreply, State, Timeout} |
+%%          {stop, Reason, State}            (terminate/2 is called)
+%% -------------------------------------------------------------------
+
+    
+handle_cast({log,LogInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{log,LogInfo}),
+    {noreply, State};
+
+handle_cast({ticket,TicketInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{ticket,TicketInfo}),
+  %  io:format("ticket,TicketInfo  ~p~n",[{?MODULE,?LINE,ticket,TicketInfo}]),
+    {noreply, State};
+handle_cast({alarm,AlarmInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{alarm,AlarmInfo}),
+ %   io:format("alarm,AlarmInfo ~p~n",[{?MODULE,?LINE,alarm,AlarmInfo}]),
+    {noreply, State};
+
+handle_cast({file_log,LogInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{file_log,State#state.file_descriptor,LogInfo}),
+    {noreply, State};
+handle_cast({file_ticket,TicketInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{file_ticket,State#state.file_descriptor,TicketInfo}),
+    {noreply, State};
+handle_cast({file_alarm,AlarmInfo}, State) ->
+    gen_event:notify(State#state.event_ref,{file_alarm,State#state.file_descriptor,AlarmInfo}),
+    {noreply, State};
+
+handle_cast(Msg, State) ->
+    io:format("unmatched match cast ~p~n",[{?MODULE,?LINE,Msg}]),
+    {noreply, State}.
+
+%% --------------------------------------------------------------------
+%% Function: handle_info/2
+%% Description: Handling all non call/cast messages
+%% Returns: {noreply, State}          |
+%%          {noreply, State, Timeout} |
+%%          {stop, Reason, State}            (terminate/2 is called)
+%% --------------------------------------------------------------------
+
+handle_info(Info, State) ->
+    io:format("unmatched match info ~p~n",[{?MODULE,?LINE,Info}]),
+    {noreply, State}.
+
+
+%% --------------------------------------------------------------------
+%% Function: terminate/2
+%% Description: Shutdown the server
+%% Returns: any (ignored by gen_server)
+%% --------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    ok.
+
+%% --------------------------------------------------------------------
+%% Func: code_change/3
+%% Purpose: Convert process state when code is changed
+%% Returns: {ok, NewState}
+%% --------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%% --------------------------------------------------------------------
+%%% Internal functions
+%% --------------------------------------------------------------------
+%% --------------------------------------------------------------------
+%% Function: 
+%% Description:
+%% Returns: non
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+%% Internal functions
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+%% Function: 
+%% Description:
+%% Returns: non
+%% --------------------------------------------------------------------
