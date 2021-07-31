@@ -80,7 +80,7 @@
 %
 %% --------------------------------------------------------------------
 init([]) ->
- %   {ok,Fd}=file:open(?MODULE,write),    
+    {ok,Fd}=file:open(?MODULE,write),    
     
   %  mnesia:stop(),
   %  mnesia:delete_schema([node()]),
@@ -143,7 +143,6 @@ handle_cast({kube_log,Info}, State) ->
     {noreply, State};
 
 handle_cast({log_msg,Info}, State) ->
-%    nice(Info),
     case State#state.monitor_node of
 	node_defined->
 	    ok;
@@ -220,7 +219,7 @@ log_to_file(Info)->
     ok.
 
 
-write_info(Info)->
+write_info({Date,Time,Node,Type,Msg,InfoList})->
     LogFile=filename:join(?LogDir,?Latest),
     case file:read_file_info(LogFile) of
 	{error,_Reason}->
@@ -248,11 +247,8 @@ write_info(Info)->
 	    end
     end,
     {ok,S}=file:open(LogFile,[append]),
-    io:format(S,"~w.~n",[Info]),
-    {ok,LogInfo}=file:consult(LogFile),
-   % io:format("LogInfo ~p~n",[LogInfo]),
-  %  AddedInfo=[Info|LogInfo],
- %   lists:foreach(fun(X)->io:format(S,"~w.~n",[X]) end,AddedInfo),
+	io:format(S,"~p.~n",
+		  [{Date,Time,Node,Type,Msg,InfoList}]),
     file:close(S).
 
 remove_oldest_log(FileNames)->
